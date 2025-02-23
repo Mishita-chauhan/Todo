@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 import uvicorn
 from fastapi import FastAPI, HTTPException, Path
@@ -7,9 +8,19 @@ from tortoise.models import Model
 from tortoise import fields
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Ensure the 'instance' folder exists
+DB_FOLDER = "instance"
+DB_FILE = f"{DB_FOLDER}/todo.db"
+
+if not os.path.exists(DB_FOLDER):
+    os.makedirs(DB_FOLDER)
+
+if not os.path.exists(DB_FILE):
+    open(DB_FILE, 'w').close()  # Create an empty database file
+
 # Load settings from .env
 class Settings(BaseSettings):
-    database_url: str = "sqlite://db.sqlite3"
+    database_url: str = f"sqlite://{DB_FILE}"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
@@ -102,7 +113,7 @@ register_tortoise(
     app,
     db_url=settings.database_url,
     modules={"models": ["main"]},
-    generate_schemas=True,
+    generate_schemas=True,  # This will automatically create tables if they don't exist
     add_exception_handlers=True,
 )
 
