@@ -1,5 +1,6 @@
 import logging
 import sys
+from app.config import settings
 
 logging.basicConfig(
     stream=sys.stdout,

@@ -1,16 +1,13 @@
 from datetime import datetime
 from pydantic import BaseModel
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from app.database import get_db
+from app.utilities.db import db
 
-
-# Define Pydantic models for Todos
 class Todo(BaseModel):
     title: str
     completed: bool = False
 
 class TodoId(BaseModel):
-    id: int  # SQLite uses integers as primary keys
+    id: int
 
 class TodoRecord(TodoId, Todo):
     created_date: datetime

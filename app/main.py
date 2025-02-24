@@ -1,23 +1,18 @@
 import time
 from typing import Any, Callable, TypeVar
-
 import uvicorn
-from fastapi import FastAPI, Request, Response, Depends
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.ext.asyncio import AsyncSession
-
 
 from app.config import settings
 from app.routers.todos import todos
 from app.utilities.logger import logger
-from app.database import get_db
+from app.utilities.db import get_db_connection
 
 description = """
-This is a fancy API built with [FastAPI🚀](https://fastapi.tiangolo.com/)
-
-📝 [Source Code](https://github.com/dpills/fastapi-prod-guide)  
-🐞 [Issues](https://github.com/dpills/fastapi-prod-guide/issues) 
+Build a simple Todo API with FastAPI and SQLite
 """
+
 app = FastAPI(
     title="My Todo App",
     description=description,
@@ -25,14 +20,13 @@ app = FastAPI(
     docs_url="/",
     root_path=settings.root_path,
 )
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    allow_origins=[
-        "http://localhost:3000",
-    ],
+    allow_origins=["http://localhost:3000"],
 )
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -54,14 +48,33 @@ async def process_time_log_middleware(request: Request, call_next: F) -> Respons
         response.status_code,
         process_time,
     )
+
     return response
 
+# 🚀 Include Todo Router (Now Uses SQLite)
 app.include_router(
     todos.router,
     prefix="/v1/todos",
     tags=["todos"],
-    dependencies=[Depends(get_db)],
 )
+
+# ✅ Ensure database table exists before starting
+def init_db():
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS todos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            completed BOOLEAN DEFAULT 0,
+            created_date TEXT NOT NULL,
+            updated_date TEXT NOT NULL
+        )
+    """)
+    db.commit()
+    db.close()
+
+init_db()
 
 if __name__ == "__main__":
     uvicorn.run(
