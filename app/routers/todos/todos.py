@@ -1,80 +1,111 @@
 from datetime import datetime
-
-from fastapi import APIRouter, HTTPException, Path, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from app.database import get_db
+from fastapi import APIRouter, HTTPException, Path
+from app.utilities.db import get_db_connection
 from .models import NotFoundException, Todo, TodoId, TodoRecord
-from .schemas import TodoCreate, TodoUpdate
-from .models import TodoModel
 
 router = APIRouter()
 
 @router.post("", response_model=TodoId)
-async def create_todo(payload: TodoCreate, db: AsyncSession = Depends(get_db)) -> TodoId:
+async def create_todo(payload: Todo) -> TodoId:
     """
     Create a new Todo
     """
     now = datetime.utcnow()
-    new_todo = TodoModel(
-        title=payload.title,
-        completed=payload.completed,
-        created_date=now,
-        updated_date=now,
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    cursor.execute(
+        "INSERT INTO todos (title, completed, created_date, updated_date) VALUES (?, ?, ?, ?)",
+        (payload.title, payload.completed, now, now),
     )
-    db.add(new_todo)
-    await db.commit()
-    await db.refresh(new_todo)
-    return TodoId(id=new_todo.id)
+    db.commit()
+    todo_id = cursor.lastrowid
+    db.close()
+
+    return TodoId(id=todo_id)
 
 @router.get("/{id}", response_model=TodoRecord, responses={404: {"description": "Not Found", "model": NotFoundException}})
-async def get_todo(id: int, db: AsyncSession = Depends(get_db)) -> TodoRecord:
+async def get_todo(id: int = Path(description="Todo ID")) -> TodoRecord:
     """
     Get a Todo
     """
-    result = await db.execute(select(TodoModel).filter(TodoModel.id == id))
-    todo = result.scalars().first()
-    if not todo:
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    cursor.execute("SELECT * FROM todos WHERE id = ?", (id,))
+    row = cursor.fetchone()
+    db.close()
+
+    if row is None:
         raise HTTPException(status_code=404, detail="Not Found")
-    return TodoRecord.from_orm(todo)
+
+    return TodoRecord(
+        id=row["id"],
+        title=row["title"],
+        completed=row["completed"],
+        created_date=row["created_date"],
+        updated_date=row["updated_date"],
+    )
 
 @router.get("", response_model=list[TodoRecord])
-async def get_todos(db: AsyncSession = Depends(get_db)) -> list[TodoRecord]:
+async def get_todos() -> list[TodoRecord]:
     """
     Get Todos
     """
-    result = await db.execute(select(TodoModel))
-    todos = result.scalars().all()
-    return [TodoRecord.from_orm(todo) for todo in todos]
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    cursor.execute("SELECT * FROM todos")
+    rows = cursor.fetchall()
+    db.close()
+
+    return [
+        TodoRecord(
+            id=row["id"],
+            title=row["title"],
+            completed=row["completed"],
+            created_date=row["created_date"],
+            updated_date=row["updated_date"],
+        )
+        for row in rows
+    ]
 
 @router.put("/{id}", response_model=TodoId, responses={404: {"description": "Not Found", "model": NotFoundException}})
-async def update_todo(id: int, payload: TodoUpdate, db: AsyncSession = Depends(get_db)) -> TodoId:
+async def update_todo(payload: Todo, id: int = Path(description="Todo ID")) -> TodoId:
     """
     Update a Todo
     """
-    result = await db.execute(select(TodoModel).filter(TodoModel.id == id))
-    todo = result.scalars().first()
-    if not todo:
+    now = datetime.utcnow()
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    cursor.execute(
+        "UPDATE todos SET title = ?, completed = ?, updated_date = ? WHERE id = ?",
+        (payload.title, payload.completed, now, id),
+    )
+    db.commit()
+
+    if cursor.rowcount == 0:
+        db.close()
         raise HTTPException(status_code=404, detail="Not Found")
-    
-    todo.title = payload.title
-    todo.completed = payload.completed
-    todo.updated_date = datetime.utcnow()
-    
-    await db.commit()
-    await db.refresh(todo)
-    return TodoId(id=todo.id)
+
+    db.close()
+    return TodoId(id=id)
 
 @router.delete("/{id}", response_model=bool, responses={404: {"description": "Not Found", "model": NotFoundException}})
-async def delete_todo(id: int, db: AsyncSession = Depends(get_db)) -> bool:
+async def delete_todo(id: int = Path(description="Todo ID")) -> bool:
     """
     Delete a Todo
     """
-    result = await db.execute(select(TodoModel).filter(TodoModel.id == id))
-    todo = result.scalars().first()
-    if not todo:
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    cursor.execute("DELETE FROM todos WHERE id = ?", (id,))
+    db.commit()
+
+    if cursor.rowcount == 0:
+        db.close()
         raise HTTPException(status_code=404, detail="Not Found")
-    
-    await db.delete(todo)
-    await db.commit()
+
+    db.close()
     return True
