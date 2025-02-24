@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request, Response, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
+
 from app.config import settings
 from app.routers.todos import todos
 from app.utilities.logger import logger
